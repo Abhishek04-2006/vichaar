@@ -4,12 +4,12 @@ import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage"; // ✅ Add this
 
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
+  apiKey: "AIzaSyARIN49NrNJ94rUKje7IocM3asDwVXSwuU",
   authDomain: "vichaar-app.firebaseapp.com",
   projectId: "vichaar-app",
-  storageBucket: "vichaar-app.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID",
+  storageBucket: "vichaar-app.firebasestorage.app",
+  messagingSenderId: "373620033937",
+  appId: "1:373620033937:web:17aa048aebf28191f3b230"
 };
 
 const app = initializeApp(firebaseConfig);
