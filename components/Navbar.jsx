@@ -1,72 +1,93 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Menu, X } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
+import { Menu, X } from "lucide-react";
+import Avatar from "@/components/ui/Avatar";
+import { db } from "@/app/firebase/firebaseConfig";
+import { doc, getDoc } from "firebase/firestore";
 
 export default function Navbar() {
-  const router = useRouter();
-
-  // ✅ States
-  const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState(null);
-  const [darkMode, setDarkMode] = useState(false);
+  const [userData, setUserData] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
+  const [ready, setReady] = useState(false);
 
-useEffect(() => {
-  // ✅ Delay all state updates to avoid synchronous warnings
-  const timer = setTimeout(() => {
-    setMounted(true);
+  // -------------------------------
+  // 1. Run once on mount
+  // -------------------------------
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setReady(true);
 
-    try {
-      const savedUser = JSON.parse(localStorage.getItem("vichaar_user") || "null");
-      const savedTheme = localStorage.getItem("theme");
-
-      if (savedUser) setUser(savedUser);
-
-      if (savedTheme === "dark") {
-        setDarkMode(true);
-        document.documentElement.classList.add("dark");
-      } else {
-        document.documentElement.classList.remove("dark");
-      }
-    } catch (err) {
-      console.error("Error loading user/theme:", err);
-    }
-  }, 0);
-
-  // ✅ Cleanup timer on unmount
-  return () => clearTimeout(timer);
-}, []);
-
-  
-
-
-  // ✅ Toggle dark mode
-  const toggleDarkMode = () => {
-    const newMode = !darkMode;
-    setDarkMode(newMode);
-    localStorage.setItem("theme", newMode ? "dark" : "light");
-
-    if (newMode) {
+    // Load theme
+    const theme = localStorage.getItem("theme");
+    if (theme === "dark") {
+      setDarkMode(true);
       document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
     }
+
+    // Load saved user
+    const stored = localStorage.getItem("vichaar_user");
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        setUser(parsed);
+        if (parsed.photoURL) setUserData(parsed);
+      } catch {}
+    }
+  }, []);
+
+  // -------------------------------
+  // 2. Fetch Firestore user if missing
+  // -------------------------------
+  useEffect(() => {
+    if (!user?.uid) return;
+    if (userData?.photoURL) return;
+
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, "users", user.uid));
+        if (snap.exists()) setUserData(snap.data());
+      } catch (e) {
+        console.error(e);
+      }
+    })();
+  }, [user]);
+
+  // -------------------------------
+  // 3. Toggle dark mode
+  // -------------------------------
+  const toggleDarkMode = () => {
+    const newValue = !darkMode;
+    setDarkMode(newValue);
+    localStorage.setItem("theme", newValue ? "dark" : "light");
+
+    document.documentElement.classList.toggle("dark", newValue);
   };
 
-  // ✅ Logout handler
+  // -------------------------------
+  // 4. Logout
+  // -------------------------------
   const handleLogout = () => {
     localStorage.removeItem("vichaar_user");
     setUser(null);
-    router.push("/login");
+    setUserData(null);
+    window.location.href = "/login";
   };
 
-  // ✅ Prevent mismatch during hydration
-  if (!mounted) return <nav className="h-14 bg-white dark:bg-gray-900"></nav>;
+  // -------------------------------
+  // 5. Avoid hydration mismatch
+  // -------------------------------
+  if (!ready) {
+    return <nav className="h-16 bg-white dark:bg-gray-900 shadow"></nav>;
+  }
 
+  // -------------------------------
+  // 6. Render Navbar
+  // -------------------------------
   return (
     <nav
       className={`w-full shadow-md ${
@@ -74,63 +95,56 @@ useEffect(() => {
       }`}
     >
       <div className="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
+        
         {/* Logo */}
-        <Image
-           src="/vichaar-logo.svg"
-          alt="Vichaar Logo"
-        width={140}
-        height={40}
-       />
+        <Link href="/">
+          <Image
+            src="/vichaar-logo.svg"
+            width={130}
+            height={40}
+            alt="Vichaar Logo"
+          />
+        </Link>
 
         {/* Desktop Menu */}
         <div className="hidden md:flex items-center gap-6">
-          <Link href="/" className="hover:text-blue-500">
-            Home
-          </Link>
-          <Link href="/feed" className="hover:text-blue-500">
-            Feed
-          </Link>
-          <Link href="/publish" className="hover:text-blue-500">
-            Publish
-          </Link>
-          <Link href="/profile" className="hover:text-blue-500">
-            Profile
-          </Link>
+          <Link href="/">Home</Link>
+          <Link href="/feed">Feed</Link>
+          <Link href="/publish">Publish</Link>
+          <Link href="/profile">Profile</Link>
 
-          {/* Dark Mode Toggle */}
           <button
             onClick={toggleDarkMode}
-            className="border rounded-md px-2 py-1 hover:bg-gray-200 dark:hover:bg-gray-800 transition"
+            className="border px-2 py-1 rounded-md"
           >
             {darkMode ? "🌙" : "☀️"}
           </button>
 
-          {/* Auth Buttons */}
           {user ? (
-            <>
-              <span className="text-sm text-gray-600 dark:text-gray-300">
-                Welcome, <strong>{user.name || user.email}</strong>
-              </span>
+            <div className="flex items-center gap-3">
+              <Avatar
+                src={userData?.photoURL || "/default-avatar.png"}
+                size={36}
+              />
+              <span>{userData?.name || user.email}</span>
+
               <button
                 onClick={handleLogout}
-                className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-md transition"
+                className="bg-red-500 px-3 py-1 rounded-md text-white"
               >
                 Logout
               </button>
-            </>
+            </div>
           ) : (
-            <Link
-              href="/login"
-              className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-md transition"
-            >
+            <Link href="/login" className="bg-blue-500 px-3 py-1 text-white rounded-md">
               Login
             </Link>
           )}
         </div>
 
-        {/* Mobile Menu Toggle */}
+        {/* Mobile Toggle */}
         <button
-          className="md:hidden p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
+          className="md:hidden p-2 rounded-md"
           onClick={() => setMenuOpen(!menuOpen)}
         >
           {menuOpen ? <X size={22} /> : <Menu size={22} />}
@@ -140,41 +154,28 @@ useEffect(() => {
       {/* Mobile Menu */}
       {menuOpen && (
         <div
-          className={`flex flex-col items-center md:hidden space-y-3 pb-4 ${
+          className={`flex flex-col items-center pb-4 md:hidden ${
             darkMode ? "bg-gray-900 text-white" : "bg-white text-gray-900"
           }`}
         >
-          <Link href="/" onClick={() => setMenuOpen(false)}>
-            Home
-          </Link>
-          <Link href="/feed" onClick={() => setMenuOpen(false)}>
-            Feed
-          </Link>
-          <Link href="/publish" onClick={() => setMenuOpen(false)}>
-            Publish
-          </Link>
-          <Link href="/profile" onClick={() => setMenuOpen(false)}>
-            Profile
-          </Link>
+          <Link href="/">Home</Link>
+          <Link href="/feed">Feed</Link>
+          <Link href="/publish">Publish</Link>
+          <Link href="/profile">Profile</Link>
 
-          {/* Mobile Dark Mode Toggle */}
           <button
             onClick={toggleDarkMode}
-            className="border rounded-md px-3 py-1 hover:bg-gray-200 dark:hover:bg-gray-800 transition"
+            className="border px-3 py-1 rounded-md my-2"
           >
             {darkMode ? "🌙 Dark" : "☀️ Light"}
           </button>
 
-          {/* Auth Buttons */}
           {user ? (
             <>
-              <p className="text-sm">Hi, {user.name || user.email}</p>
+              <p>{userData?.name || user.email}</p>
               <button
-                onClick={() => {
-                  handleLogout();
-                  setMenuOpen(false);
-                }}
-                className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-md transition"
+                onClick={handleLogout}
+                className="bg-red-500 px-3 py-1 rounded-md text-white"
               >
                 Logout
               </button>
@@ -182,8 +183,7 @@ useEffect(() => {
           ) : (
             <Link
               href="/login"
-              onClick={() => setMenuOpen(false)}
-              className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-md transition"
+              className="bg-blue-500 px-3 py-1 rounded-md text-white"
             >
               Login
             </Link>

@@ -1,19 +1,29 @@
+// app/firebase/firebaseConfig.js
+
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage"; // ✅ Add this
+import { getAuth } from "firebase/auth";
+import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyARIN49NrNJ94rUKje7IocM3asDwVXSwuU",
-  authDomain: "vichaar-app.firebaseapp.com",
-  projectId: "vichaar-app",
-  storageBucket: "vichaar-app.firebasestorage.app",
-  messagingSenderId: "373620033937",
-  appId: "1:373620033937:web:17aa048aebf28191f3b230"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-const app = initializeApp(firebaseConfig);
+let app;
 
-export const auth = getAuth(app);
+if (!global._firebase) {
+  app = initializeApp(firebaseConfig);
+  global._firebase = app;
+} else {
+  app = global._firebase;
+}
+
 export const db = getFirestore(app);
-export const storage = getStorage(app); // ✅ Export storage
+export const auth = getAuth(app);
+export const storage = getStorage(app);
