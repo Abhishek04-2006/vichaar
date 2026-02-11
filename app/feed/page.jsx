@@ -1,96 +1,81 @@
 "use client";
-
-
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import {
+  collection,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  doc,
+} from "firebase/firestore";
 import { db } from "@/app/firebase/firebaseConfig";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
-import Image from "next/image";
+import useAuth from "@/hooks/useAuth";
+import Postcard from "@/components/Postcard";
+import PeopleYouMayKnow from "@/components/PeopleYouMayKnow";
 
-export default function FeedInput({ user }) {
-  const [text, setText] = useState("");
-  const [img, setImg] = useState(null);
-  const [uploading, setUploading] = useState(false);
+export default function Feed() {
+  const user = useAuth();
+  const [posts, setPosts] = useState([]);
+  const [following, setFollowing] = useState([]);
 
-  const handleImage = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  // get following list
+  useEffect(() => {
+    if (!user?.uid) return;
 
-    setUploading(true);
+    const unsub = onSnapshot(
+      doc(db, "users", user.uid),
+      snap => {
+        setFollowing(snap.data()?.following || []);
+      }
+    );
 
-    const form = new FormData();
-    form.append("file", file);
+    return () => unsub();
+  }, [user]);
 
-    const res = await fetch("/api/upload", { method: "POST", body: form });
-    const data = await res.json();
-
-    if (data.success) {
-      setImg(data.url);
+  // feed posts
+  useEffect(() => {
+    if (!following || following.length === 0) {
+      setPosts([]); // Clear posts when not following anyone
+      return;
     }
 
-    setUploading(false);
-  };
+    const q = query(
+      collection(db, "posts"),
+      where("authorId", "in", following)
+    );
 
-  const createPost = async () => {
-    const createPost = async () => {
-  if (!user || !user.uid) {
-    alert("Please login first.");
-    return;
-  }
+    const unsub = onSnapshot(q, (snap) => {
+      const fetchedPosts = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      // Sort by createdAt client-side to avoid needing a composite index
+      const sortedPosts = fetchedPosts.sort((a, b) => {
+        const aTime = a.createdAt?.toMillis() || 0;
+        const bTime = b.createdAt?.toMillis() || 0;
+        return bTime - aTime; // desc order
+      });
+      setPosts(sortedPosts);
+    });
 
-  await addDoc(collection(db, "posts"), {
-    uid: user.uid,
-    text,
-    image: img || null,
-    createdAt: serverTimestamp(),
-  });
+    return () => unsub();
+  }, [following]);
 
-  setText("");
-  setImg(null);
-};
-
-  };
 
   return (
-    <div className="bg-[#1d2433] text-white rounded-xl p-4 max-w-2xl mx-auto shadow">
-      <textarea
-        className="w-full p-3 rounded-lg bg-[#2b3345] outline-none"
-        placeholder="Share your thoughts..."
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-      />
+    <div className="max-w-5xl mx-auto p-6 grid grid-cols-1 md:grid-cols-3 gap-8">
+      {/* Main Feed */}
+      <div className="md:col-span-2 space-y-4">
+        {following.length === 0 && (
+          <p className="text-center text-gray-500 mt-10">
+            Follow people to see posts 👀
+          </p>
+        )}
+        {posts.map(post => (
+          <Postcard key={post.id} post={post} />
+        ))}
+      </div>
 
-      {/* Image Preview */}
-      {img && (
-        <div className="mt-3 relative">
-          <Image
-            src={img}
-            width={500}
-            height={300}
-            alt="preview"
-            className="rounded-xl border border-gray-700"
-          />
-          <button
-            onClick={() => setImg(null)}
-            className="absolute top-2 right-2 bg-black/60 px-2 py-1 rounded text-sm"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      <div className="flex items-center justify-between mt-3">
-        <label className="cursor-pointer bg-[#2b3345] hover:bg-[#343d50] px-3 py-2 rounded-lg">
-          📷 Add Image
-          <input type="file" accept="image/*" className="hidden" onChange={handleImage} />
-        </label>
-
-        <button
-          onClick={createPost}
-          disabled={uploading}
-          className="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded-lg"
-        >
-          {uploading ? "Uploading..." : "Post"}
-        </button>
+      {/* Sidebar (Hidden on mobile) */}
+      <div className="hidden md:block">
+        <PeopleYouMayKnow />
       </div>
     </div>
   );

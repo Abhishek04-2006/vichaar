@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import useAuth from "@/hooks/useAuth";
 import { db } from "@/app/firebase/firebaseConfig";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc } from "firebase/firestore";
 
 export default function Publish() {
   const [content, setContent] = useState("");
@@ -26,11 +26,54 @@ export default function Publish() {
     }
 
     try {
+      // Security & Moderation Check
+      if (!user?.uid) {
+        alert("Authentication error. Please log in again.");
+        return;
+      }
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
+
+      if (!userSnap.exists()) throw new Error("User not found");
+      const userData = userSnap.data();
+
+      if (userData.isBanned) {
+        alert("⛔ Your account has been disabled due to repeated community guideline violations.");
+        return;
+      }
+
+      // Check for absurd/abusive language
+      const { analyzeContent } = await import("@/lib/moderation");
+      const isAbusive = analyzeContent(content);
+
+      if (isAbusive) {
+        const currentWarnings = userData.warnings || 0;
+        const newWarnings = currentWarnings + 1;
+
+        if (newWarnings >= 2) {
+          // Second strike -> BAN
+          await updateDoc(userRef, {
+            warnings: newWarnings,
+            isBanned: true
+          });
+          alert("⛔ Account Disabled.\n\nYou have violated the community guidelines twice using abusive language. Your account is now permanentally disabled.");
+        } else {
+          // First strike -> WARNING
+          await updateDoc(userRef, {
+            warnings: newWarnings
+          });
+          alert("⚠️ Warning (1/2)\n\nOur AI system detected abusive language in your content.\nThis is your first warning. One more violation will result in an account ban.");
+        }
+        return; // Stop execution
+      }
+
       await addDoc(collection(db, "posts"), {
         content: content,
-        author: user.email,
+        authorName: user.name || user.email?.split("@")[0] || "Anonymous",
+        authorEmail: user.email,
+        authorPhoto: user.photoURL || null,
         authorId: user.uid,
-        likes: 0,
+        likes: [],
         comments: [],
         createdAt: serverTimestamp(),
       });

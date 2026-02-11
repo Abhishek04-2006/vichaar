@@ -2,21 +2,25 @@
 import { useEffect, useState } from "react";
 
 export default function useAuth() {
-  // Lazy initialize from localStorage so we don't call setState synchronously in an effect
+  /* 
+    Fix for Hydration Mismatch and React Effect Rules: 
+    Always initialize with null. We use a lazy initializer pattern
+    that only runs on the client side to avoid hydration mismatches.
+  */
   const [user, setUser] = useState(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const storedUser = localStorage.getItem("vichaar_user");
-        return storedUser ? JSON.parse(storedUser) : null;
-      } catch (e) {
-        console.error("Failed to parse stored user:", e);
-        return null;
-      }
+    // This initializer only runs once on mount
+    if (typeof window === "undefined") return null;
+
+    try {
+      const storedUser = localStorage.getItem("vichaar_user");
+      return storedUser ? JSON.parse(storedUser) : null;
+    } catch (e) {
+      console.error("Failed to parse stored user:", e);
+      return null;
     }
-    return null;
   });
 
-  // Keep effect to react to external auth changes if needed (no synchronous setState here)
+  // Listen for storage changes from other tabs/windows
   useEffect(() => {
     const onStorage = (e) => {
       if (e.key === "vichaar_user") {

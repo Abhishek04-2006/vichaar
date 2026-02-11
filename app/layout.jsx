@@ -1,8 +1,11 @@
+import { Outfit } from "next/font/google";
 import './globals.css'
 import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
 
-    export const metadata = {
+const outfit = Outfit({ subsets: ["latin"] });
+
+export const metadata = {
   title: "VICHAAR – Share Your Thoughts",
   description:
     "A modern thought-sharing platform built with Next.js, Firebase & Tailwind CSS.",
@@ -29,18 +32,16 @@ import Footer from '@/components/Footer'
   },
 };
 
-
-
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
-      <body className="bg-gray-50 text-gray-900">
+    <html lang="en" suppressHydrationWarning={true}>
+      <body className={`${outfit.className} bg-gray-50 text-gray-900`} suppressHydrationWarning={true}>
         {/* Shared Navbar */}
         <Navbar />
-        
+
         {/* Page Content */}
         <main className="min-h-[80vh] px-4">{children}</main>
-        
+
         {/* Shared Footer */}
         <Footer />
       </body>

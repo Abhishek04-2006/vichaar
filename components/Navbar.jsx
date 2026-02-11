@@ -3,23 +3,27 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Menu, X } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { Menu, X, Home, Newspaper, MessageCircle, Bell, UserPlus, PenSquare, User } from "lucide-react";
 import Avatar from "@/components/ui/Avatar";
 import { db } from "@/app/firebase/firebaseConfig";
 import { doc, getDoc } from "firebase/firestore";
 
 export default function Navbar() {
+  const pathname = usePathname();
   const [user, setUser] = useState(null);
   const [userData, setUserData] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [ready, setReady] = useState(false);
 
+  // Hide Navbar on Auth Pages (Logic moved to return)
+  const isAuthPage = ["/login", "/signup", "/register"].includes(pathname);
+
   // -------------------------------
   // 1. Run once on mount
   // -------------------------------
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setReady(true);
 
     // Load theme
@@ -36,7 +40,7 @@ export default function Navbar() {
         const parsed = JSON.parse(stored);
         setUser(parsed);
         if (parsed.photoURL) setUserData(parsed);
-      } catch {}
+      } catch { }
     }
   }, []);
 
@@ -55,7 +59,7 @@ export default function Navbar() {
         console.error(e);
       }
     })();
-  }, [user]);
+  }, [user, userData?.photoURL]);
 
   // -------------------------------
   // 3. Toggle dark mode
@@ -71,7 +75,14 @@ export default function Navbar() {
   // -------------------------------
   // 4. Logout
   // -------------------------------
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      const { auth } = await import("@/app/firebase/firebaseConfig");
+      const { signOut } = await import("firebase/auth");
+      await signOut(auth);
+    } catch (e) {
+      console.error("Logout error", e);
+    }
     localStorage.removeItem("vichaar_user");
     setUser(null);
     setUserData(null);
@@ -79,10 +90,10 @@ export default function Navbar() {
   };
 
   // -------------------------------
-  // 5. Avoid hydration mismatch
+  // 5. Avoid hydration mismatch or Auth Page hidden
   // -------------------------------
-  if (!ready) {
-    return <nav className="h-16 bg-white dark:bg-gray-900 shadow"></nav>;
+  if (!ready || isAuthPage) {
+    return null; // Or return a skeleton if you want; for auth page we return null
   }
 
   // -------------------------------
@@ -90,12 +101,11 @@ export default function Navbar() {
   // -------------------------------
   return (
     <nav
-      className={`w-full shadow-md ${
-        darkMode ? "bg-gray-900 text-white" : "bg-white text-gray-900"
-      }`}
+      className={`w-full shadow-md ${darkMode ? "bg-gray-900 text-white" : "bg-white text-gray-900"
+        }`}
     >
       <div className="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
-        
+
         {/* Logo */}
         <Link href="/">
           <Image
@@ -108,10 +118,13 @@ export default function Navbar() {
 
         {/* Desktop Menu */}
         <div className="hidden md:flex items-center gap-6">
-          <Link href="/">Home</Link>
-          <Link href="/feed">Feed</Link>
-          <Link href="/publish">Publish</Link>
-          <Link href="/profile">Profile</Link>
+          <Link href="/" title="Home" className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"><Home size={24} /></Link>
+          <Link href="/feed" title="Feed" className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"><Newspaper size={24} /></Link>
+          <Link href="/chat" title="Messages" className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"><MessageCircle size={24} /></Link>
+          <Link href="/notifications" title="Notifications" className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"><Bell size={24} /></Link>
+          <Link href="/find-people" title="Connect" className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"><UserPlus size={24} /></Link>
+          <Link href="/publish" title="Publish" className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"><PenSquare size={24} /></Link>
+          <Link href="/profile" title="Profile" className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"><User size={24} /></Link>
 
           <button
             onClick={toggleDarkMode}
@@ -123,7 +136,7 @@ export default function Navbar() {
           {user ? (
             <div className="flex items-center gap-3">
               <Avatar
-                src={userData?.photoURL || "/default-avatar.png"}
+                src={userData?.photoURL}
                 size={36}
               />
               <span>{userData?.name || user.email}</span>
@@ -154,14 +167,16 @@ export default function Navbar() {
       {/* Mobile Menu */}
       {menuOpen && (
         <div
-          className={`flex flex-col items-center pb-4 md:hidden ${
-            darkMode ? "bg-gray-900 text-white" : "bg-white text-gray-900"
-          }`}
+          className={`flex flex-col items-center pb-4 md:hidden ${darkMode ? "bg-gray-900 text-white" : "bg-white text-gray-900"
+            }`}
         >
-          <Link href="/">Home</Link>
-          <Link href="/feed">Feed</Link>
-          <Link href="/publish">Publish</Link>
-          <Link href="/profile">Profile</Link>
+          <Link href="/" className="flex items-center gap-2 py-2 w-full px-6 hover:bg-gray-100 dark:hover:bg-gray-800"><Home size={20} /> Home</Link>
+          <Link href="/feed" className="flex items-center gap-2 py-2 w-full px-6 hover:bg-gray-100 dark:hover:bg-gray-800"><Newspaper size={20} /> Feed</Link>
+          <Link href="/chat" className="flex items-center gap-2 py-2 w-full px-6 hover:bg-gray-100 dark:hover:bg-gray-800"><MessageCircle size={20} /> Messages</Link>
+          <Link href="/notifications" className="flex items-center gap-2 py-2 w-full px-6 hover:bg-gray-100 dark:hover:bg-gray-800"><Bell size={20} /> Notifications</Link>
+          <Link href="/find-people" className="flex items-center gap-2 py-2 w-full px-6 hover:bg-gray-100 dark:hover:bg-gray-800"><UserPlus size={20} /> Connect</Link>
+          <Link href="/publish" className="flex items-center gap-2 py-2 w-full px-6 hover:bg-gray-100 dark:hover:bg-gray-800"><PenSquare size={20} /> Publish</Link>
+          <Link href="/profile" className="flex items-center gap-2 py-2 w-full px-6 hover:bg-gray-100 dark:hover:bg-gray-800"><User size={20} /> Profile</Link>
 
           <button
             onClick={toggleDarkMode}

@@ -38,13 +38,27 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      // Example: if you have a signIn function exported from app/firebase/auth.js
-      // import { signIn } from "@/app/firebase/auth";
-      // await signIn(email, password);
+      const { auth, db } = await import("@/app/firebase/firebaseConfig");
+      const { signInWithEmailAndPassword } = await import("firebase/auth");
+      const { doc, getDoc } = await import("firebase/firestore");
 
-      // ---- Placeholder: simulate success after 700ms ----
-      await new Promise((r) => setTimeout(r, 700));
-      // redirect to feed/profile etc.
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // fetch user data to save to localStorage (to keep useAuth happy for now)
+      const snap = await getDoc(doc(db, "users", user.uid));
+      if (snap.exists()) {
+        const userData = { uid: user.uid, email: user.email, ...snap.data() };
+        localStorage.setItem("vichaar_user", JSON.stringify(userData));
+        // dispatch storage event so hook picks it up immediately
+        window.dispatchEvent(new Event("storage"));
+      } else {
+        // basic fallback
+        const userData = { uid: user.uid, email: user.email };
+        localStorage.setItem("vichaar_user", JSON.stringify(userData));
+        window.dispatchEvent(new Event("storage"));
+      }
+
       window.location.href = "/feed";
     } catch (err) {
       console.error(err);
@@ -117,6 +131,7 @@ export default function LoginPage() {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="email"
                     className="mt-2 w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
                     placeholder="you@domain.com"
                   />
@@ -129,6 +144,7 @@ export default function LoginPage() {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
                     className="mt-2 w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
                     placeholder="••••••••"
                   />
@@ -157,11 +173,43 @@ export default function LoginPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
-                    onClick={() => alert("Wire Google sign-in here")}
+                    onClick={async () => {
+                      setLoading(true);
+                      setError("");
+                      try {
+                        const { auth, db, GoogleAuthProvider } = await import("@/app/firebase/firebaseConfig");
+                        const { signInWithPopup, signOut } = await import("firebase/auth");
+                        const { doc, getDoc } = await import("firebase/firestore");
+
+                        const provider = new GoogleAuthProvider();
+                        const result = await signInWithPopup(auth, provider);
+                        const user = result.user;
+
+                        // Strict Check: User doc MUST exist
+                        const snap = await getDoc(doc(db, "users", user.uid));
+                        if (!snap.exists()) {
+                          // Allow "Account does not exist" - Force sign out
+                          await signOut(auth);
+                          throw new Error("Account not found. Please Sign Up first.");
+                        }
+
+                        // Success: Sync local and redirect
+                        const userData = { uid: user.uid, email: user.email, ...snap.data() };
+                        localStorage.setItem("vichaar_user", JSON.stringify(userData));
+                        window.dispatchEvent(new Event("storage"));
+                        window.location.href = "/feed";
+
+                      } catch (err) {
+                        console.error("Google Login Error:", err);
+                        setError(err.message);
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
                     className="flex items-center justify-center gap-2 border rounded-md py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition"
                   >
                     <svg width="18" height="18" viewBox="0 0 48 48" fill="none" aria-hidden>
-                      <path d="M44 20H24v8h11.8C34.6 31.9 30.8 36 24 36 15.2 36 8 28.8 8 20S15.2 4 24 4c6 0 10 2.6 12.3 5.2l6.7-6.7C38.3 1.7 31.6 0 24 0 10.7 0 0 10.7 0 24s10.7 24 24 24c13.3 0 24-10.7 24-24 0-1.6-.2-3.1-.6-4.6z" fill="#EA4335"/>
+                      <path d="M44 20H24v8h11.8C34.6 31.9 30.8 36 24 36 15.2 36 8 28.8 8 20S15.2 4 24 4c6 0 10 2.6 12.3 5.2l6.7-6.7C38.3 1.7 31.6 0 24 0 10.7 0 0 10.7 0 24s10.7 24 24 24c13.3 0 24-10.7 24-24 0-1.6-.2-3.1-.6-4.6z" fill="#EA4335" />
                     </svg>
                     Google
                   </button>
@@ -172,7 +220,7 @@ export default function LoginPage() {
                     className="flex items-center justify-center gap-2 border rounded-md py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition"
                   >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-                      <path d="M12 .5a12 12 0 00-3.8 23.4c.6.1.8-.2.8-.5v-2c-3.3.7-4-1.6-4-1.6-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.6 1 1.6 1 .9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.7-1.4-2.5-.3-5.2-1.3-5.2-5.9 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.6.1-3.3 0 0 1-.3 3.4 1.2a12 12 0 016.3 0C18 6 19 6.3 19 6.3c.6 1.7.2 3 .1 3.3.7.8 1.2 1.8 1.2 3.1 0 4.6-2.7 5.6-5.3 5.9.4.4.8 1 .8 2v3c0 .3.2.6.8.5A12 12 0 0012 .5z" fill="currentColor"/>
+                      <path d="M12 .5a12 12 0 00-3.8 23.4c.6.1.8-.2.8-.5v-2c-3.3.7-4-1.6-4-1.6-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.6 1 1.6 1 .9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.7-1.4-2.5-.3-5.2-1.3-5.2-5.9 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.6.1-3.3 0 0 1-.3 3.4 1.2a12 12 0 016.3 0C18 6 19 6.3 19 6.3c.6 1.7.2 3 .1 3.3.7.8 1.2 1.8 1.2 3.1 0 4.6-2.7 5.6-5.3 5.9.4.4.8 1 .8 2v3c0 .3.2.6.8.5A12 12 0 0012 .5z" fill="currentColor" />
                     </svg>
                     GitHub
                   </button>

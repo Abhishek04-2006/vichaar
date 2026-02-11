@@ -1,7 +1,6 @@
 "use client";
 import Image from "next/image";
 import Link from "next/link";
-import Navbar from "@/components/Navbar";
 import { motion } from "framer-motion";
 
 export default function LandingPage() {
@@ -73,7 +72,7 @@ export default function LandingPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
 
-            {[ 
+            {[
               { icon: "📝", title: "Publish Ideas", desc: "Share your thoughts instantly with a clean UI." },
               { icon: "⚡", title: "Real-time Feed", desc: "Instant updates with Firebase Sync." },
               { icon: "💬", title: "Engage Smarter", desc: "Like and comment with a thoughtful community." }

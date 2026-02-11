@@ -13,7 +13,7 @@ export async function POST(req) {
     const buffer = Buffer.from(arrayBuffer);
 
     cloudinary.config({
-      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME || process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
       api_key: process.env.CLOUDINARY_API_KEY,
       api_secret: process.env.CLOUDINARY_API_SECRET,
     });
@@ -34,6 +34,6 @@ export async function POST(req) {
 
   } catch (err) {
     console.error("Cloudinary Error:", err);
-    return Response.json({ success: false, message: "Upload failed" });
+    return Response.json({ success: false, message: "Upload failed", error: err.message }, { status: 500 });
   }
 }

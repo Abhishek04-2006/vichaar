@@ -6,7 +6,7 @@ import useAuth from "@/hooks/useAuth";
 import { db } from "@/app/firebase/firebaseConfig";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import Avatar from "@/components/ui/Avatar"; // keep your existing UI kit component
-import classNames from "classnames";
+
 
 /**
  * Premium Profile page — supports:
@@ -18,7 +18,7 @@ import classNames from "classnames";
 export default function ProfilePage() {
   const user = useAuth(); // expected { uid, email, name?, ... }
   const [userDoc, setUserDoc] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // const [loading, setLoading] = useState(true); // unused
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const coverInputRef = useRef(null);
@@ -27,7 +27,7 @@ export default function ProfilePage() {
   // Load user doc from Firestore (or from localStorage fallback)
   useEffect(() => {
     if (!user?.uid) {
-      setLoading(false);
+      // setLoading(false); 
       return;
     }
 
@@ -47,7 +47,7 @@ export default function ProfilePage() {
             try {
               const parsed = JSON.parse(stored);
               if (mounted) setUserDoc(parsed);
-            } catch {}
+            } catch { }
           } else {
             if (mounted) setUserDoc({ email: user.email, photoURL: null, coverURL: null, name: user.name || null, bio: "" });
           }
@@ -59,10 +59,12 @@ export default function ProfilePage() {
           try {
             const parsed = JSON.parse(stored);
             if (mounted) setUserDoc(parsed);
-          } catch {}
+          } catch { }
         }
       } finally {
-        if (mounted) setLoading(false);
+        if (mounted) {
+          // loading state removed
+        }
       }
     };
 
@@ -76,7 +78,7 @@ export default function ProfilePage() {
   const syncLocalStorage = (updatedUser) => {
     try {
       localStorage.setItem("vichaar_user", JSON.stringify(updatedUser));
-    } catch (e) {
+    } catch {
       // ignore
     }
   };
@@ -192,7 +194,7 @@ export default function ProfilePage() {
 
   // UI values
   const name = userDoc?.name || user.name || user.email?.split?.("@")?.[0] || "Vichaar User";
-  const photo = userDoc?.photoURL || user?.photoURL || "/default-avatar.png";
+  const photo = userDoc?.photoURL || user?.photoURL;
   const cover = userDoc?.coverURL || null;
   const bio = userDoc?.bio || "This user hasn't added a bio yet.";
 
@@ -204,18 +206,19 @@ export default function ProfilePage() {
           {/* show cover image if exists, otherwise keep gradient */}
           {cover ? (
             <div className="absolute inset-0">
-              <img
+              <Image
                 src={cover}
                 alt="Cover"
                 className="w-full h-full object-cover"
+                fill
                 style={{ filter: "brightness(0.85)" }}
               />
             </div>
           ) : null}
 
           {/* Cover action buttons (top-right) */}
-          <div className="absolute right-4 top-4 flex gap-2">
-            <label className="inline-flex items-center gap-2 bg-gray-100/80 dark:bg-gray-800/80 px-3 py-2 rounded-md cursor-pointer hover:opacity-90">
+          <div className="absolute right-4 top-4 flex gap-2 z-10">
+            <label className="inline-flex items-center gap-2 bg-white text-gray-900 px-3 py-2 rounded-md cursor-pointer shadow-md hover:bg-gray-100 transition-colors">
               <span className="text-sm">Change Cover</span>
               <input
                 ref={coverInputRef}
@@ -228,7 +231,7 @@ export default function ProfilePage() {
 
             <button
               onClick={handleDeleteCover}
-              className="bg-red-500 text-white px-3 py-2 rounded-md hover:bg-red-600"
+              className="bg-red-500 text-white px-3 py-2 rounded-md hover:bg-red-600 shadow-md transition-colors"
             >
               Delete
             </button>

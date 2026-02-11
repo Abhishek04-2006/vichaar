@@ -10,16 +10,26 @@ html {
   transition: color 0.2s ease, background-color 0.2s ease;
 }
 
-/* Default Light Mode */
+/* Default Light Mode with Gradient Mesh */
 html {
   color-scheme: light;
   background-color: #f8f9fa;
+  background-image: 
+    radial-gradient(at 0% 0%, hsla(210,100%,96%,1) 0, transparent 50%), 
+    radial-gradient(at 50% 0%, hsla(220,100%,97%,1) 0, transparent 50%), 
+    radial-gradient(at 100% 0%, hsla(200,100%,96%,1) 0, transparent 50%);
+  background-attachment: fixed;
 }
 
-/* Dark Mode */
+/* Dark Mode with Deep Gradient */
 html.dark {
   color-scheme: dark;
-  background-color: #0d1117;
+  background-color: #0b0f19;
+  background-image: 
+    radial-gradient(at 0% 0%, hsla(220, 60%, 8%, 1) 0, transparent 50%), 
+    radial-gradient(at 50% 0%, hsla(222, 50%, 10%, 1) 0, transparent 50%), 
+    radial-gradient(at 100% 0%, hsla(215, 60%, 8%, 1) 0, transparent 50%);
+  background-attachment: fixed;
 }
 
 /* Custom Scrollbar */
