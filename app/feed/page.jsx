@@ -1,80 +1,133 @@
 "use client";
+
 import { useEffect, useState } from "react";
-import {
-  collection,
-  query,
-  where,
-  orderBy,
-  onSnapshot,
-  doc,
-} from "firebase/firestore";
-import { db } from "@/app/firebase/firebaseConfig";
+import { supabase } from "@/lib/supabase";
 import useAuth from "@/hooks/useAuth";
 import Postcard from "@/components/Postcard";
 import PeopleYouMayKnow from "@/components/PeopleYouMayKnow";
+import TrendingHashtags from "@/components/TrendingHashtags";
 
 export default function Feed() {
-  const user = useAuth();
+  const { user } = useAuth();
   const [posts, setPosts] = useState([]);
   const [following, setFollowing] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // get following list
+  // Get following list
   useEffect(() => {
-    if (!user?.uid) return;
+    if (!user?.id) return;
 
-    const unsub = onSnapshot(
-      doc(db, "users", user.uid),
-      snap => {
-        setFollowing(snap.data()?.following || []);
-      }
-    );
+    const fetchFollowing = async () => {
+      const { data } = await supabase
+        .from('users')
+        .select('following')
+        .eq('id', user.id)
+        .single();
 
-    return () => unsub();
+      setFollowing(data?.following || []);
+    };
+
+    fetchFollowing();
+
+    // Subscribe to changes
+    const subscription = supabase
+      .channel('user-following')
+      .on('postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'users',
+          filter: `id=eq.${user.id}`
+        },
+        (payload) => {
+          setFollowing(payload.new.following || []);
+        }
+      )
+      .subscribe();
+
+    return () => subscription.unsubscribe();
   }, [user]);
 
-  // feed posts
+  // Fetch feed posts
   useEffect(() => {
     if (!following || following.length === 0) {
-      setPosts([]); // Clear posts when not following anyone
+      setPosts([]);
+      setLoading(false);
       return;
     }
 
-    const q = query(
-      collection(db, "posts"),
-      where("authorId", "in", following)
-    );
+    const fetchPosts = async () => {
+      const { data, error } = await supabase
+        .from('posts')
+        .select('*')
+        .in('author_id', following)
+        .order('created_at', { ascending: false });
 
-    const unsub = onSnapshot(q, (snap) => {
-      const fetchedPosts = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      // Sort by createdAt client-side to avoid needing a composite index
-      const sortedPosts = fetchedPosts.sort((a, b) => {
-        const aTime = a.createdAt?.toMillis() || 0;
-        const bTime = b.createdAt?.toMillis() || 0;
-        return bTime - aTime; // desc order
-      });
-      setPosts(sortedPosts);
-    });
+      if (error) {
+        console.error('Error fetching posts:', error);
+      } else {
+        setPosts(data || []);
+      }
+      setLoading(false);
+    };
 
-    return () => unsub();
+    fetchPosts();
+
+    // Subscribe to real-time updates
+    const subscription = supabase
+      .channel('feed-posts')
+      .on('postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'posts',
+        },
+        (payload) => {
+          if (payload.eventType === 'INSERT' && following.includes(payload.new.author_id)) {
+            setPosts(prev => [payload.new, ...prev]);
+          } else if (payload.eventType === 'UPDATE') {
+            setPosts(prev => prev.map(p => p.id === payload.new.id ? payload.new : p));
+          } else if (payload.eventType === 'DELETE') {
+            setPosts(prev => prev.filter(p => p.id !== payload.old.id));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => subscription.unsubscribe();
   }, [following]);
-
 
   return (
     <div className="max-w-5xl mx-auto p-6 grid grid-cols-1 md:grid-cols-3 gap-8">
       {/* Main Feed */}
       <div className="md:col-span-2 space-y-4">
-        {following.length === 0 && (
+        {loading ? (
+          <div className="space-y-4">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="bg-white dark:bg-gray-800 p-6 rounded-xl animate-pulse">
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-4"></div>
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+              </div>
+            ))}
+          </div>
+        ) : following.length === 0 ? (
           <p className="text-center text-gray-500 mt-10">
             Follow people to see posts 👀
           </p>
+        ) : posts.length === 0 ? (
+          <p className="text-center text-gray-500 mt-10">
+            No posts yet from people you follow
+          </p>
+        ) : (
+          posts.map(post => (
+            <Postcard key={post.id} post={post} />
+          ))
         )}
-        {posts.map(post => (
-          <Postcard key={post.id} post={post} />
-        ))}
       </div>
 
       {/* Sidebar (Hidden on mobile) */}
-      <div className="hidden md:block">
+      <div className="hidden md:block space-y-6">
+        <TrendingHashtags limit={8} />
         <PeopleYouMayKnow />
       </div>
     </div>

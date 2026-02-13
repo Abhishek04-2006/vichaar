@@ -20,10 +20,14 @@ A modern, full-featured social media platform built with cutting-edge technologi
 - Cloudinary-powered image uploads
 - Real-time feed updates
 
-### 3. **Social Engagement**
+### 3. **Social Engagement** ⭐ NEW FEATURES!
+- **Multiple emoji reactions** (❤️ Love, 👍 Like, 😂 Haha, 😮 Wow, 😢 Sad)
+- **Double-tap to like** posts (Instagram-style)
+- **Bookmark/Save posts** for later reading
 - Like and comment on posts
 - Follow/Unfollow users
 - User discovery and recommendations
+- **Smart share** with native Web Share API
 
 ### 4. **Real-time Communication**
 - Direct messaging between users
@@ -35,10 +39,12 @@ A modern, full-featured social media platform built with cutting-edge technologi
 - Advanced search functionality
 - "People You May Know" recommendations
 
-### 6. **Beautiful UI/UX**
+### 6. **Beautiful UI/UX** ⭐ ENHANCED!
 - Modern, responsive design
-- Dark mode support
-- Smooth animations with Framer Motion
+- **Enhanced dark mode** with animated Sun/Moon toggle
+- Smooth animations and micro-interactions
+- **Hover-to-reveal reaction picker**
+- **Double-tap heart animation**
 - Glassmorphism effects
 
 ---

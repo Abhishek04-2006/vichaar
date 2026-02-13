@@ -1,39 +1,39 @@
 "use client";
 import { useEffect, useState } from "react";
-import { collection, query, limit, getDocs } from "firebase/firestore";
-import { db } from "@/app/firebase/firebaseConfig";
+import { supabase } from "@/lib/supabase";
 import useAuth from "@/hooks/useAuth";
 import Avatar from "@/components/ui/Avatar";
 import Link from "next/link";
 
 export default function PeopleYouMayKnow() {
-    const user = useAuth();
+    const { user } = useAuth();
     const [people, setPeople] = useState([]);
 
     useEffect(() => {
-        if (!user?.uid) return;
+        if (!user?.id) return;
 
         const fetchPeople = async () => {
             try {
-                // Fetch users (limitation: Firestore no native "random", so we fetch recent/all and shuffle client side for small app)
-                // ideally we would filter out `following` in the query but "not-in" has limits and needs non-empty array
-                const q = query(collection(db, "users"), limit(20));
-                const snap = await getDocs(q);
+                // Get my following list
+                const { data: myUser } = await supabase
+                    .from('users')
+                    .select('following')
+                    .eq('id', user.id)
+                    .single();
 
-                const allUsers = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+                const following = myUser?.following || [];
 
-                // Filter: not me, and not already followed
-                const myFollowing = user.following || []; // assuming user object from useAuth/firebase has following array sync'd
-                // Note: useAuth is currently from localStorage, might be stale on 'following', 
-                // effectively this component might show followed users until refetch/sync.
-                // For MVP this is acceptable.
+                // Fetch other users
+                const { data: allUsers } = await supabase
+                    .from('users')
+                    .select('*')
+                    .neq('id', user.id)
+                    .limit(20);
 
-                const suggestions = allUsers.filter(u =>
-                    u.uid !== user.uid &&
-                    !myFollowing.includes(u.uid)
-                );
-
-                setPeople(suggestions.slice(0, 5)); // show top 5
+                if (allUsers) {
+                    const suggestions = allUsers.filter(u => !following.includes(u.id));
+                    setPeople(suggestions.slice(0, 5));
+                }
             } catch (err) {
                 console.error("Error fetching suggestions:", err);
             }
@@ -49,20 +49,19 @@ export default function PeopleYouMayKnow() {
             <h3 className="font-semibold text-gray-700 dark:text-gray-200 mb-4">People you may know</h3>
             <div className="space-y-4">
                 {people.map((person) => (
-                    <div key={person.uid} className="flex items-center justify-between">
-                        <Link href={`/profile/${person.uid}`} className="flex items-center gap-3 hover:opacity-80 transition">
-                            <Avatar src={person.photoURL} alt={person.name} size={40} />
+                    <div key={person.id} className="flex items-center justify-between">
+                        <Link href={`/profile/${person.id}`} className="flex items-center gap-3 hover:opacity-80 transition">
+                            <Avatar src={person.photo_url} alt={person.name} size={40} />
                             <div className="overflow-hidden">
-                                <p className="font-medium text-sm truncate w-24 sm:w-32">{person.name}</p>
+                                <p className="font-medium text-sm truncate w-24 sm:w-32 dark:text-gray-200">{person.name}</p>
                                 <p className="text-xs text-gray-500 truncate w-24 sm:w-32">@{person.email?.split("@")[0]}</p>
                             </div>
                         </Link>
-                        {/* Follow button could go here, but for now just link to profile */}
                     </div>
                 ))}
             </div>
             <Link
-                href="/search"
+                href="/find-people"
                 className="block mt-4 text-center text-sm text-blue-500 hover:underline"
             >
                 See more

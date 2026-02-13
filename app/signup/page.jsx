@@ -1,51 +1,73 @@
 "use client";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 export default function Signup() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   const handleSignup = async (e) => {
     e.preventDefault();
+    setLoading(true);
 
     try {
-      const { auth, db } = await import("@/app/firebase/firebaseConfig");
-      const { createUserWithEmailAndPassword, updateProfile } = await import("firebase/auth");
-      const { doc, setDoc } = await import("firebase/firestore");
-
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-
-      await updateProfile(user, { displayName: name });
-
-      // Create user doc
-      const userData = {
-        name,
+      // 1. Sign up user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
-        bio: "Just joined Vichaar!",
-        createdAt: new Date(),
-        followers: [],
-        following: [],
-        photoURL: null,
-        coverURL: null
-      };
+        password,
+        options: {
+          data: {
+            full_name: name,
+          },
+        },
+      });
 
-      await setDoc(doc(db, "users", user.uid), userData);
+      if (authError) throw authError;
 
-      // Save to localStorage for useAuth hook compatibility
-      const localData = { uid: user.uid, ...userData };
-      localStorage.setItem("vichaar_user", JSON.stringify(localData));
-      window.dispatchEvent(new Event("storage"));
+      if (authData?.user) {
+        // 2. Create user record in 'users' table
+        const { error: dbError } = await supabase
+          .from('users')
+          .insert({
+            id: authData.user.id,
+            email: email,
+            name: name,
+            bio: "Just joined Vichaar!",
+            followers: [],
+            following: []
+          });
 
-      alert("Signup successful!");
-      router.push("/feed");
+        if (dbError) throw dbError;
+
+        alert("Signup successful! Please verify your email.");
+        router.push("/feed");
+      }
 
     } catch (err) {
       console.error(err);
       alert("Signup failed: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignup = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/feed`,
+        },
+      });
+      if (error) throw error;
+    } catch (err) {
+      console.error(err);
+      alert("Google signup failed");
     }
   };
 
@@ -60,7 +82,7 @@ export default function Signup() {
           <input
             type="text"
             placeholder="Full Name"
-            className="w-full p-3 border rounded-lg dark:bg-gray-700 dark:text-white"
+            className="w-full p-3 border rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600 outline-none focus:ring-2 focus:ring-blue-500"
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
@@ -68,7 +90,7 @@ export default function Signup() {
           <input
             type="email"
             placeholder="Email"
-            className="w-full p-3 border rounded-lg dark:bg-gray-700 dark:text-white"
+            className="w-full p-3 border rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600 outline-none focus:ring-2 focus:ring-blue-500"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
@@ -76,7 +98,7 @@ export default function Signup() {
           <input
             type="password"
             placeholder="Password"
-            className="w-full p-3 border rounded-lg dark:bg-gray-700 dark:text-white"
+            className="w-full p-3 border rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600 outline-none focus:ring-2 focus:ring-blue-500"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
@@ -84,9 +106,10 @@ export default function Signup() {
 
           <button
             type="submit"
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition disabled:opacity-70"
+            disabled={loading}
           >
-            Sign Up
+            {loading ? "Creating Account..." : "Sign Up"}
           </button>
 
           <div className="relative my-4">
@@ -100,51 +123,7 @@ export default function Signup() {
 
           <button
             type="button"
-            onClick={async () => {
-              try {
-                const { auth, db, GoogleAuthProvider } = await import("@/app/firebase/firebaseConfig");
-                const { signInWithPopup } = await import("firebase/auth");
-                const { doc, getDoc, setDoc } = await import("firebase/firestore");
-
-                const provider = new GoogleAuthProvider();
-                const result = await signInWithPopup(auth, provider);
-                const user = result.user;
-
-                // Check if user exists
-                const userRef = doc(db, "users", user.uid);
-                const snap = await getDoc(userRef);
-
-                let userData;
-
-                if (snap.exists()) {
-                  // User exists, just log them in
-                  userData = { uid: user.uid, email: user.email, ...snap.data() };
-                } else {
-                  // New user, create doc
-                  userData = {
-                    name: user.displayName || user.email.split("@")[0],
-                    email: user.email,
-                    bio: "Just joined Vichaar!",
-                    createdAt: new Date(),
-                    followers: [],
-                    following: [],
-                    photoURL: user.photoURL,
-                    coverURL: null
-                  };
-                  await setDoc(userRef, userData);
-                  userData = { uid: user.uid, ...userData };
-                }
-
-                // Sync local and redirect
-                localStorage.setItem("vichaar_user", JSON.stringify(userData));
-                window.dispatchEvent(new Event("storage"));
-                router.push("/feed");
-
-              } catch (err) {
-                console.error("Google Signup Error:", err);
-                alert("Signup failed: " + err.message);
-              }
-            }}
+            onClick={handleGoogleSignup}
             className="w-full flex items-center justify-center gap-2 border border-gray-300 dark:border-gray-600 rounded-lg p-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition dark:text-white"
           >
             <svg width="20" height="20" viewBox="0 0 48 48" fill="none" aria-hidden>

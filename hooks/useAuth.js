@@ -1,47 +1,29 @@
 "use client";
+
 import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 export default function useAuth() {
-  /* 
-    Fix for Hydration Mismatch and React Effect Rules: 
-    Always initialize with null. We use a lazy initializer pattern
-    that only runs on the client side to avoid hydration mismatches.
-  */
-  const [user, setUser] = useState(() => {
-    // This initializer only runs once on mount
-    if (typeof window === "undefined") return null;
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-    try {
-      const storedUser = localStorage.getItem("vichaar_user");
-      return storedUser ? JSON.parse(storedUser) : null;
-    } catch (e) {
-      console.error("Failed to parse stored user:", e);
-      return null;
-    }
-  });
-
-  // Listen for storage changes from other tabs/windows
   useEffect(() => {
-    const onStorage = (e) => {
-      if (e.key === "vichaar_user") {
-        try {
-          setUser(e.newValue ? JSON.parse(e.newValue) : null);
-        } catch (err) {
-          console.error("Failed to parse vichaar_user from storage event:", err);
-        }
-      }
-    };
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
 
-    if (typeof window !== "undefined") {
-      window.addEventListener("storage", onStorage);
-    }
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
 
-    return () => {
-      if (typeof window !== "undefined") {
-        window.removeEventListener("storage", onStorage);
-      }
-    };
+    return () => subscription.unsubscribe();
   }, []);
 
-  return user;
+  return { user, loading };
 }

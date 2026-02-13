@@ -1,31 +1,18 @@
 "use client";
 
 import { useEffect, useState, use } from "react";
-import { db } from "@/app/firebase/firebaseConfig";
-import {
-    doc,
-    getDoc,
-    collection,
-    addDoc,
-    onSnapshot,
-    serverTimestamp,
-    query,
-    orderBy,
-    updateDoc,
-    increment
-} from "firebase/firestore";
+import { supabase } from "@/lib/supabase";
 import useAuth from "@/hooks/useAuth";
 import Postcard from "@/components/Postcard";
 import Avatar from "@/components/ui/Avatar";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
 import { ArrowLeft, Send } from "lucide-react";
+import { analyzeContent } from "@/lib/moderation";
 
 export default function PostPage({ params }) {
-    // unwrapping params for Next.js 15/16+
     const { postId } = use(params);
-
-    const user = useAuth();
+    const { user } = useAuth();
     const [post, setPost] = useState(null);
     const [comments, setComments] = useState([]);
     const [newComment, setNewComment] = useState("");
@@ -34,29 +21,65 @@ export default function PostPage({ params }) {
 
     // 1. Fetch Post Data
     useEffect(() => {
-        const unsub = onSnapshot(doc(db, "posts", postId), (docSnap) => {
-            if (docSnap.exists()) {
-                setPost({ id: docSnap.id, ...docSnap.data() });
-            } else {
+        const fetchPost = async () => {
+            const { data, error } = await supabase
+                .from('posts')
+                .select('*')
+                .eq('id', postId)
+                .single();
+
+            if (error) {
+                console.error("Error fetching post:", error);
                 setPost(null);
+            } else {
+                setPost(data);
             }
             setLoading(false);
-        });
-        return () => unsub();
+        };
+
+        fetchPost();
+
+        // Listen for post updates (like/comment count)
+        const subscription = supabase
+            .channel(`post-${postId}`)
+            .on('postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'posts', filter: `id=eq.${postId}` },
+                (payload) => setPost(payload.new)
+            )
+            .subscribe();
+
+        return () => subscription.unsubscribe();
     }, [postId]);
 
     // 2. Fetch Comments (Realtime)
     useEffect(() => {
-        const q = query(
-            collection(db, "posts", postId, "comments"),
-            orderBy("createdAt", "asc") // Oldest first like a thread
-        );
+        const fetchComments = async () => {
+            const { data } = await supabase
+                .from('comments')
+                .select('*')
+                .eq('post_id', postId)
+                .order('created_at', { ascending: true });
 
-        const unsub = onSnapshot(q, (snap) => {
-            const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-            setComments(list);
-        });
-        return () => unsub();
+            setComments(data || []);
+        };
+
+        fetchComments();
+
+        const subscription = supabase
+            .channel(`comments-${postId}`)
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'comments', filter: `post_id=eq.${postId}` },
+                (payload) => {
+                    if (payload.eventType === 'INSERT') {
+                        setComments(prev => [...prev, payload.new]);
+                    } else if (payload.eventType === 'DELETE') {
+                        setComments(prev => prev.filter(c => c.id !== payload.old.id));
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => subscription.unsubscribe();
     }, [postId]);
 
     // 3. Handle Add Comment
@@ -67,77 +90,51 @@ export default function PostPage({ params }) {
 
         setSubmitting(true);
         try {
-            // 3a. Security & Moderation Check
-            // Fetch latest user status (don't trust local storage for bans)
-            const userRef = doc(db, "users", user.uid);
-            const userSnap = await getDoc(userRef);
-
-            if (!userSnap.exists()) throw new Error("User not found");
-            const userData = userSnap.data();
-
-            if (userData.isBanned) {
-                alert("⛔ Your account has been disabled due to repeated community guideline violations.");
+            // Security Check (Moderation)
+            const isAbusive = analyzeContent(newComment);
+            if (isAbusive) {
+                alert("⚠️ Warning: Your comment contains inappropriate language.");
                 setSubmitting(false);
                 return;
             }
 
-            // Check for absurd/abusive language
-            const { analyzeContent } = await import("@/lib/moderation");
-            const isAbusive = analyzeContent(newComment);
+            // Insert Comment
+            const { error: commentError } = await supabase
+                .from('comments')
+                .insert({
+                    post_id: postId,
+                    user_id: user.id,
+                    user_name: user.user_metadata?.name || user.email?.split("@")[0] || "User",
+                    user_photo: user.user_metadata?.avatar_url || null,
+                    text: newComment
+                });
 
-            if (isAbusive) {
-                const currentWarnings = userData.warnings || 0;
-                const newWarnings = currentWarnings + 1;
+            if (commentError) throw commentError;
 
-                if (newWarnings >= 2) {
-                    // Second strike -> BAN
-                    await updateDoc(userRef, {
-                        warnings: newWarnings,
-                        isBanned: true
-                    });
-                    alert("⛔ Account Disabled.\n\nYou have violated the community guidelines twice using abusive language. Your account is now permanentally disabled.");
-                } else {
-                    // First strike -> WARNING
-                    await updateDoc(userRef, {
-                        warnings: newWarnings
-                    });
-                    alert("⚠️ Warning (1/2)\n\nOur AI system detected abusive language in your comment.\nThis is your first warning. One more violation will result in an account ban.");
-                }
+            // Update comment count
+            // Note: Triggers/Functions are better for this but for now we do client-side optimistic update or manual update
+            // Ideally, we'd have a trigger on the DB side. I'll rely on fetching or separate update.
+            // Let's manually update the post comment count for now to be safe
 
-                setSubmitting(false);
-                return; // Stop execution
+            if (post) {
+                await supabase
+                    .from('posts')
+                    .update({ comment_count: (post.comment_count || 0) + 1 })
+                    .eq('id', postId);
             }
 
-            // 3b. Add to subcollection if safe
-            await addDoc(collection(db, "posts", postId, "comments"), {
-                text: newComment,
-                authorId: user.uid,
-                authorName: user.name || user.email?.split("@")[0] || "User",
-                authorPhoto: user.photoURL || null,
-                createdAt: serverTimestamp(),
-            });
-
-            // Update comment count on main post (optional but good for UX)
-            await updateDoc(doc(db, "posts", postId), {
-                commentCount: increment(1)
-            });
-
-            // NOTIFICATION TRIGGER
-            if (post && post.authorId !== user.uid) {
-                try {
-                    await addDoc(collection(db, "users", post.authorId, "notifications"), {
-                        type: "comment",
-                        senderId: user.uid,
-                        senderName: user.name || user.email?.split("@")[0] || "User",
-                        senderPhoto: user.photoURL || null,
-                        postId: postId,
-                        message: newComment,
-                        createdAt: serverTimestamp(),
-                        read: false
-                    });
-                } catch (err) {
-                    console.error("Failed to send notification", err);
-                }
+            // Send Notification
+            if (post && post.author_id !== user.id) {
+                await supabase.from('notifications').insert({
+                    user_id: post.author_id,
+                    type: "comment",
+                    sender_id: user.id,
+                    sender_name: user.user_metadata?.name || user.email?.split("@")[0] || "User",
+                    sender_photo: user.user_metadata?.avatar_url || null,
+                    post_id: postId,
+                    message: newComment,
+                    read: false
+                });
             }
 
             setNewComment("");
@@ -154,7 +151,6 @@ export default function PostPage({ params }) {
 
     return (
         <main className="max-w-2xl mx-auto p-4 md:p-6 min-h-screen pb-24">
-
             {/* Back Header */}
             <Link href="/feed" className="flex items-center gap-2 text-gray-500 mb-4 hover:text-blue-600 transition">
                 <ArrowLeft size={20} />
@@ -178,17 +174,17 @@ export default function PostPage({ params }) {
                 ) : (
                     comments.map((comment) => (
                         <div key={comment.id} className="flex gap-3">
-                            <Link href={`/profile/${comment.authorId}`}>
-                                <Avatar src={comment.authorPhoto} size={40} />
+                            <Link href={`/profile/${comment.user_id}`}>
+                                <Avatar src={comment.user_photo} size={40} />
                             </Link>
                             <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-2xl rounded-tl-none w-full">
                                 <div className="flex justify-between items-baseline mb-1">
                                     <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">
-                                        {comment.authorName}
+                                        {comment.user_name}
                                     </span>
                                     <span className="text-xs text-gray-500">
-                                        {comment.createdAt?.seconds
-                                            ? formatDistanceToNow(new Date(comment.createdAt.seconds * 1000), { addSuffix: true })
+                                        {comment.created_at
+                                            ? formatDistanceToNow(new Date(comment.created_at), { addSuffix: true })
                                             : "Just now"}
                                     </span>
                                 </div>
@@ -203,7 +199,8 @@ export default function PostPage({ params }) {
             <div className="fixed bottom-0 left-0 right-0 p-4 bg-white dark:bg-gray-900 border-t dark:border-gray-800">
                 <div className="max-w-2xl mx-auto">
                     <form onSubmit={handleSendComment} className="flex gap-2">
-                        <Avatar src={user?.photoURL} size={40} className="hidden sm:block" />
+                        {/* Optional: Show user avatar if available */}
+                        {user && <Avatar src={user.user_metadata?.avatar_url} size={40} className="hidden sm:block" />}
                         <input
                             value={newComment}
                             onChange={(e) => setNewComment(e.target.value)}

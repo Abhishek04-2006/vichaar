@@ -2,17 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { db } from "@/app/firebase/firebaseConfig";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  onSnapshot,
-  orderBy,
-} from "firebase/firestore";
+import { supabase } from "@/lib/supabase";
 import Avatar from "@/components/ui/Avatar";
 import Postcard from "@/components/Postcard";
+import { Search as SearchIcon } from "lucide-react";
 
 export default function SearchPage() {
   const [term, setTerm] = useState("");
@@ -21,18 +14,32 @@ export default function SearchPage() {
   const [allPosts, setAllPosts] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
 
-  // realtime load all posts (small optimization: only latest 200)
-  // In a real app we'd use Algolia or TypeSense for full-text search
+  // Load all posts for client-side search
   useEffect(() => {
-    const q = query(collection(db, "posts"), orderBy("createdAt", "desc"));
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setAllPosts(list);
-    });
-    return () => unsub();
+    const fetchPosts = async () => {
+      const { data } = await supabase
+        .from('posts')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(200);
+
+      setAllPosts(data || []);
+    };
+
+    fetchPosts();
+
+    // Subscribe to new posts
+    const subscription = supabase
+      .channel('search-posts')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, (payload) => {
+        setAllPosts(prev => [payload.new, ...prev].slice(0, 200));
+      })
+      .subscribe();
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  // search users with prefix match on email or name
+  // Search users and posts
   useEffect(() => {
     if (!term) {
       setUserResults([]);
@@ -43,36 +50,14 @@ export default function SearchPage() {
     const runSearch = async () => {
       setLoadingUsers(true);
       try {
-        const qEmail = query(
-          collection(db, "users"),
-          where("email", ">=", term),
-          where("email", "<=", term + "\uf8ff")
-        );
-        // try name too: you might have displayName field
-        const qName = query(
-          collection(db, "users"),
-          where("name", ">=", term),
-          where("name", "<=", term + "\uf8ff")
-        );
+        // Search users by name or email (case-insensitive)
+        const { data: users } = await supabase
+          .from('users')
+          .select('*')
+          .or(`name.ilike.%${term}%,email.ilike.%${term}%`)
+          .limit(20);
 
-        const [snapE, snapN] = await Promise.all([getDocs(qEmail), getDocs(qName)]);
-        const results = [
-          ...snapE.docs.map((d) => ({ id: d.id, ...d.data() })),
-          ...snapN.docs.map((d) => ({ id: d.id, ...d.data() })),
-        ];
-
-        // de-duplicate by uid/email
-        const uniq = [];
-        const seen = new Set();
-        for (const u of results) {
-          const key = u.uid || u.email;
-          if (!seen.has(key)) {
-            uniq.push(u);
-            seen.add(key);
-          }
-        }
-
-        setUserResults(uniq);
+        setUserResults(users || []);
       } catch (err) {
         console.error("User search error:", err);
         setUserResults([]);
@@ -80,14 +65,14 @@ export default function SearchPage() {
         setLoadingUsers(false);
       }
 
-      // posts: client-side filter on allPosts content (case-insensitive)
+      // Posts: client-side filter on content
       const pMatches = allPosts.filter((p) =>
-        (p.content || "" + p.authorName || "").toLowerCase().includes(term.toLowerCase())
+        (p.content || "" + p.author_name || "").toLowerCase().includes(term.toLowerCase())
       );
       setPostResults(pMatches);
     };
 
-    // small debounce
+    // Debounce
     const t = setTimeout(runSearch, 300);
     return () => clearTimeout(t);
   }, [term, allPosts]);
@@ -104,16 +89,7 @@ export default function SearchPage() {
             placeholder="Search for people or topics..."
             className="w-full p-4 pl-12 rounded-full border border-gray-200 shadow-md focus:ring-2 focus:ring-blue-500 focus:outline-none dark:bg-gray-800 dark:border-gray-700 dark:text-white transition-all"
           />
-          <svg
-            className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"
-            width="20"
-            height="20"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
+          <SearchIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
         </div>
       </div>
 
@@ -134,12 +110,12 @@ export default function SearchPage() {
             <div className="space-y-3">
               {userResults.map((u) => (
                 <Link
-                  key={u.uid || u.id}
-                  href={`/profile/${u.uid || u.id}`}
+                  key={u.id}
+                  href={`/profile/${u.id}`}
                   className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-md transition border border-gray-100 dark:border-gray-700"
                 >
                   <Avatar
-                    src={u.photoURL}
+                    src={u.photo_url}
                     size={48}
                   />
                   <div className="overflow-hidden">

@@ -3,12 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-
-/**
- * Beautiful minimal login page for Vichaar (Option A)
- * - paste as app/login/page.jsx
- * - wire the handleLogin() function to your auth logic (firebase or custom)
- */
+import { supabase } from "@/lib/supabase";
 
 const QUOTES = [
   "Ideas matter — share yours.",
@@ -32,38 +27,44 @@ export default function LoginPage() {
     return () => clearInterval(id);
   }, []);
 
-  // wire this to your actual auth (firebase) implementation.
   async function handleLogin(e) {
     e.preventDefault();
     setError("");
     setLoading(true);
+
     try {
-      const { auth, db } = await import("@/app/firebase/firebaseConfig");
-      const { signInWithEmailAndPassword } = await import("firebase/auth");
-      const { doc, getDoc } = await import("firebase/firestore");
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
+      if (error) throw error;
 
-      // fetch user data to save to localStorage (to keep useAuth happy for now)
-      const snap = await getDoc(doc(db, "users", user.uid));
-      if (snap.exists()) {
-        const userData = { uid: user.uid, email: user.email, ...snap.data() };
-        localStorage.setItem("vichaar_user", JSON.stringify(userData));
-        // dispatch storage event so hook picks it up immediately
-        window.dispatchEvent(new Event("storage"));
-      } else {
-        // basic fallback
-        const userData = { uid: user.uid, email: user.email };
-        localStorage.setItem("vichaar_user", JSON.stringify(userData));
-        window.dispatchEvent(new Event("storage"));
-      }
-
+      // Update local storage for immediate UI reflect
+      localStorage.setItem("vichaar_user", JSON.stringify(data.user));
       window.location.href = "/feed";
+
     } catch (err) {
       console.error(err);
       setError(err?.message || "Failed to log in. Please try again.");
     } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleGoogleLogin() {
+    try {
+      setLoading(true);
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/feed`,
+        },
+      });
+      if (error) throw error;
+    } catch (err) {
+      console.error(err);
+      setError(err?.message || "Google login failed");
       setLoading(false);
     }
   }
@@ -74,13 +75,12 @@ export default function LoginPage() {
         <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl overflow-hidden grid grid-cols-1 md:grid-cols-2">
           {/* Left: Branding + quote */}
           <div className="relative p-10 md:p-16 flex flex-col justify-center bg-gradient-to-br from-blue-600 to-indigo-700 text-white">
-            {/* Floating subtle shapes */}
             <div className="absolute -left-10 -top-10 w-56 h-56 rounded-full bg-white/5 blur-3xl transform rotate-12"></div>
             <div className="absolute -right-16 bottom-8 w-72 h-72 rounded-full bg-white/3 blur-2xl"></div>
 
             <div className="z-10">
               <div className="flex items-center space-x-3 mb-6">
-                <Image src="/vichaar-logo.svg" alt="Vichaar" width={120} height={36} priority />
+                <span className="font-bold text-3xl tracking-tighter">VICHAAR</span>
               </div>
 
               <h2 className="text-3xl md:text-4xl font-extrabold leading-tight mb-3">
@@ -91,17 +91,12 @@ export default function LoginPage() {
                 Join a focused community where ideas are shared and conversations matter.
               </p>
 
-              {/* Rotating quote */}
-              <div
-                aria-live="polite"
-                className="mt-8 text-sm md:text-base text-blue-100/90 italic transition-opacity duration-700"
-              >
+              <div className="mt-8 text-sm md:text-base text-blue-100/90 italic transition-opacity duration-700">
                 <span className="opacity-80">“</span>
                 <span className="ml-1 font-medium">{QUOTES[quoteIndex]}</span>
                 <span className="opacity-80">”</span>
               </div>
 
-              {/* subtle CTA */}
               <div className="mt-8">
                 <Link href="/signup" className="inline-block bg-white/10 border border-white/20 text-white px-4 py-2 rounded-lg hover:bg-white/20 transition">
                   Create an account
@@ -109,7 +104,6 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* small footer */}
             <div className="z-10 mt-auto text-xs text-blue-100/60 pt-8">
               By continuing you agree to our <Link href="/terms" className="underline">Terms</Link>.
             </div>
@@ -169,65 +163,20 @@ export default function LoginPage() {
                   <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700"></div>
                 </div>
 
-                {/* social buttons placeholders */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3">
                   <button
                     type="button"
-                    onClick={async () => {
-                      setLoading(true);
-                      setError("");
-                      try {
-                        const { auth, db, GoogleAuthProvider } = await import("@/app/firebase/firebaseConfig");
-                        const { signInWithPopup, signOut } = await import("firebase/auth");
-                        const { doc, getDoc } = await import("firebase/firestore");
-
-                        const provider = new GoogleAuthProvider();
-                        const result = await signInWithPopup(auth, provider);
-                        const user = result.user;
-
-                        // Strict Check: User doc MUST exist
-                        const snap = await getDoc(doc(db, "users", user.uid));
-                        if (!snap.exists()) {
-                          // Allow "Account does not exist" - Force sign out
-                          await signOut(auth);
-                          throw new Error("Account not found. Please Sign Up first.");
-                        }
-
-                        // Success: Sync local and redirect
-                        const userData = { uid: user.uid, email: user.email, ...snap.data() };
-                        localStorage.setItem("vichaar_user", JSON.stringify(userData));
-                        window.dispatchEvent(new Event("storage"));
-                        window.location.href = "/feed";
-
-                      } catch (err) {
-                        console.error("Google Login Error:", err);
-                        setError(err.message);
-                      } finally {
-                        setLoading(false);
-                      }
-                    }}
-                    className="flex items-center justify-center gap-2 border rounded-md py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition"
+                    onClick={handleGoogleLogin}
+                    className="flex items-center justify-center gap-2 border rounded-md py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition dark:text-white dark:border-gray-600"
                   >
                     <svg width="18" height="18" viewBox="0 0 48 48" fill="none" aria-hidden>
                       <path d="M44 20H24v8h11.8C34.6 31.9 30.8 36 24 36 15.2 36 8 28.8 8 20S15.2 4 24 4c6 0 10 2.6 12.3 5.2l6.7-6.7C38.3 1.7 31.6 0 24 0 10.7 0 0 10.7 0 24s10.7 24 24 24c13.3 0 24-10.7 24-24 0-1.6-.2-3.1-.6-4.6z" fill="#EA4335" />
                     </svg>
                     Google
                   </button>
-
-                  <button
-                    type="button"
-                    onClick={() => alert("Wire GitHub sign-in here")}
-                    className="flex items-center justify-center gap-2 border rounded-md py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition"
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-                      <path d="M12 .5a12 12 0 00-3.8 23.4c.6.1.8-.2.8-.5v-2c-3.3.7-4-1.6-4-1.6-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.6 1 1.6 1 .9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.7-1.4-2.5-.3-5.2-1.3-5.2-5.9 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.6.1-3.3 0 0 1-.3 3.4 1.2a12 12 0 016.3 0C18 6 19 6.3 19 6.3c.6 1.7.2 3 .1 3.3.7.8 1.2 1.8 1.2 3.1 0 4.6-2.7 5.6-5.3 5.9.4.4.8 1 .8 2v3c0 .3.2.6.8.5A12 12 0 0012 .5z" fill="currentColor" />
-                    </svg>
-                    GitHub
-                  </button>
                 </div>
               </form>
 
-              {/* small skip link for dev */}
               <div className="mt-6 text-xs text-gray-400">
                 <span>Need help? </span>
                 <Link href="/help" className="underline">Contact support</Link>
