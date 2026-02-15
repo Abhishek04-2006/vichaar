@@ -10,6 +10,7 @@ import TrendingHashtags from "@/components/TrendingHashtags";
 export default function Feed() {
   const { user } = useAuth();
   const [posts, setPosts] = useState([]);
+  const [news, setNews] = useState([]);
   const [following, setFollowing] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -97,6 +98,36 @@ export default function Feed() {
     return () => subscription.unsubscribe();
   }, [following]);
 
+  // Fetch news
+  useEffect(() => {
+    fetch('https://saurav.tech/NewsAPI/top-headlines/category/general/in.json')
+      .then(res => res.json())
+      .then(data => {
+        const newsItems = data.articles?.slice(0, 10).map((article, i) => ({ // Take top 10
+          id: `news-${i}`,
+          content: `${article.title}\n\n${article.description || ''}`,
+          image: article.urlToImage,
+          author_id: 'news-bot', // Dummy ID
+          author_name: article.source.name || 'Daily News',
+          author_photo: 'https://cdn-icons-png.flaticon.com/512/21/21601.png',
+          created_at: article.publishedAt,
+          likes: [],
+          bookmarks: [],
+          reactions: {},
+          type: 'news',
+          url: article.url,
+          comment_count: 0
+        })) || [];
+        setNews(newsItems);
+      })
+      .catch(err => console.error("News fetch error", err));
+  }, []);
+
+  // Merge posts and news
+  const mergedPosts = [...posts, ...news].sort((a, b) =>
+    new Date(b.created_at) - new Date(a.created_at)
+  );
+
   return (
     <div className="max-w-5xl mx-auto p-6 grid grid-cols-1 md:grid-cols-3 gap-8">
       {/* Main Feed */}
@@ -110,16 +141,16 @@ export default function Feed() {
               </div>
             ))}
           </div>
-        ) : following.length === 0 ? (
+        ) : following.length === 0 && news.length === 0 ? (
           <p className="text-center text-gray-500 mt-10">
             Follow people to see posts 👀
           </p>
-        ) : posts.length === 0 ? (
+        ) : mergedPosts.length === 0 ? (
           <p className="text-center text-gray-500 mt-10">
-            No posts yet from people you follow
+            No posts or news available right now.
           </p>
         ) : (
-          posts.map(post => (
+          mergedPosts.map(post => (
             <Postcard key={post.id} post={post} />
           ))
         )}

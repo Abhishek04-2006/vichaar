@@ -62,6 +62,8 @@ export default function Postcard({ post }) {
     setLiked(newLiked);
     setLikeCount((prev) => (newLiked ? prev + 1 : prev - 1));
 
+    if (post.type === 'news') return; // Client-side only for news
+
     try {
       // Get current likes
       const { data: currentPost } = await supabase
@@ -127,6 +129,8 @@ export default function Postcard({ post }) {
     setReactionCounts(newReactionCounts);
     setShowReactions(false);
 
+    if (post.type === 'news') return;
+
     try {
       await supabase
         .from('posts')
@@ -146,6 +150,8 @@ export default function Postcard({ post }) {
 
     const newBookmarked = !bookmarked;
     setBookmarked(newBookmarked);
+
+    if (post.type === 'news') return;
 
     try {
       if (newBookmarked) {
@@ -254,30 +260,56 @@ export default function Postcard({ post }) {
           }
           return <span key={index}>{part.content}</span>;
         })}
+        {post.type === 'news' && post.url && (
+          <a
+            href={post.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block mt-2 text-blue-600 hover:underline text-sm font-medium"
+          >
+            Read Full Story →
+          </a>
+        )}
       </div>
 
-      {/* Post Image with Double-Tap */}
+      {/* Post Content (Image or Video) */}
       {post.image && (
         <div
-          onClick={handleDoubleTap}
-          className="mb-4 relative h-64 w-full rounded-xl overflow-hidden border dark:border-gray-700 bg-gray-100 dark:bg-gray-900 cursor-pointer select-none"
+          className="mb-4 relative h-64 w-full rounded-xl overflow-hidden border dark:border-gray-700 bg-gray-100 dark:bg-gray-900 select-none"
         >
-          <Image
-            src={post.image}
-            alt="Post Image"
-            fill
-            className="object-cover"
-            draggable={false}
-          />
-
-          {/* Heart Animation on Double-Tap */}
-          {showHeartAnimation && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <Heart
-                size={80}
-                className="text-white fill-current animate-ping opacity-80"
-                style={{ animationDuration: '0.6s', animationIterationCount: '1' }}
+          {(post.image.match(/\.(mp4|webm|ogg|mov)$/i) || post.image.includes("/video/upload/")) ? (
+            <video
+              src={post.image}
+              controls
+              className="w-full h-full object-contain bg-black"
+            />
+          ) : (post.type === 'news') ? (
+            <img
+              src={post.image}
+              alt="Post Image"
+              className="w-full h-full object-cover cursor-pointer"
+              onClick={handleDoubleTap}
+            />
+          ) : (
+            <div className="relative h-full w-full cursor-pointer" onClick={handleDoubleTap}>
+              <Image
+                src={post.image}
+                alt="Post Image"
+                fill
+                className="object-cover"
+                draggable={false}
               />
+
+              {/* Heart Animation on Double-Tap */}
+              {showHeartAnimation && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <Heart
+                    size={80}
+                    className="text-white fill-current animate-ping opacity-80"
+                    style={{ animationDuration: '0.6s', animationIterationCount: '1' }}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>

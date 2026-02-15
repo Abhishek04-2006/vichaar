@@ -5,12 +5,11 @@ const DEFAULT_AVATAR = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/
 
 export default function Avatar({ src, size = 48 }) {
   return (
-    <Image
+    <img
       src={src || DEFAULT_AVATAR}
       alt="avatar"
-      className="rounded-full object-cover shadow-md"
-      width={size}
-      height={size}
+      className="rounded-full object-cover shadow-md bg-gray-200"
+      style={{ width: size, height: size }}
     />
   );
 }

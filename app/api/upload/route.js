@@ -20,7 +20,7 @@ export async function POST(req) {
 
     const uploadRes = await new Promise((resolve, reject) => {
       cloudinary.uploader
-        .upload_stream({ folder: "vichaar-posts" }, (err, result) => {
+        .upload_stream({ folder: "vichaar-posts", resource_type: "auto" }, (err, result) => {
           if (err) reject(err);
           resolve(result);
         })
